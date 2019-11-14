@@ -34,7 +34,7 @@ def drawBlobs(im, blobs, nmax=None):
 
     order = np.argsort(-blobs[:, 3])
     theta = np.linspace(0, 2*np.pi, 24)
-    for i in xrange(nmax):
+    for i in range(nmax):
         r = blobs[order[i], 2]
         plt.plot(blobs[order[i], 0] + r*np.cos(theta),
                  blobs[order[i], 1] + r*np.sin(theta),
