@@ -89,7 +89,7 @@ def non_max_suppression_blobs(scale_spaces, scaling, sigma, level_, cutoff=0.003
 
 def detectBlobs(im, param={}):
     #Default Params
-    default_cutoff, default_sigma, default_level, default_scaling = 0.002, 1.2, 14, np.sqrt(1.8)
+    default_cutoff, default_sigma, default_level, default_scaling = 0.001, 1.2, 14, np.sqrt(1.8)
     cutoff = param.get("cutoff") if param.get("cutoff") is not None else default_cutoff
     sigma_seed = param.get("sigma_seed") if param.get("sigma_seed") is not None else default_sigma
     level = param.get("level") if param.get("level") is not None else default_level
