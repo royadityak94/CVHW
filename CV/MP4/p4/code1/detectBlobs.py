@@ -11,24 +11,14 @@ from scipy.ndimage.filters import convolve
 import sys
 
 def py_im2double(img):
-    original_img = img.astype('float')
-    img_min, img_max = np.min(original_img.ravel()), np.max(original_img.ravel())
-    return (original_img - img_min) / (img_max - img_min)
-
-def fspecial_log(p2, std):
-    siz = int((p2-1)/2)
-    x = y = np.linspace(-siz, siz, 2*siz+1)
-    x, y = np.meshgrid(x, y)
-    arg = -(x**2 + y**2) / (2*std**2)
-    h = np.exp(arg)
-    h[h < sys.float_info.epsilon * h.max()] = 0
-    h = h/h.sum() if h.sum() != 0 else h
-    h1 = h*(x**2 + y**2 - 2*std**2) / (std**4)
-    return h1 - h1.mean()
-
+    grayscaled = rgb2gray(img)
+    return grayscaled
+#     original_img = grayscaled.astype('float')
+#     img_min, img_max = np.min(original_img.ravel()), np.max(original_img.ravel())
+#     return (original_img - img_min) / (img_max - img_min)
 
 def laplacian_of_gaussian_filter(sigma):
-    kernel_size = np.round(3*sigma)#np.round(6*sigma)
+    kernel_size = np.round(4*sigma)
     if kernel_size % 2 == 0:
         kernel_size+=1
     half_size=np.floor(kernel_size/2)
@@ -50,72 +40,62 @@ def create_scale_space(gray_image,sigma_scale_factor,initial_sigma,level):
     sigma = [0]*(level+1)
     sigma[0] = initial_sigma
     for i in range(0,level):
-        #print('Convolving with sigma={}'.format(sigma[i]))
+        print('Convolving with sigma={}'.format(sigma[i]))
         kernel=laplacian_of_gaussian_filter(sigma[i])
         convolved_image=convolve(gray_image,kernel)
-        #cv2.imshow("LoG Convolved Image with sigma={}".format(sigma[i]),convolved_image)
         scale_space[:,:,i] = np.square(convolved_image)
         sigma[i+1]=sigma[i]*sigma_scale_factor
     return scale_space, sigma
 
+def max_scaled_spaces(scale_spaces, i, j, l1, l2):
+    h, w = scale_spaces[:, :, 0].shape
+    search_over = [(0, 1), (0, -1), (1, 1), (1, -1), (-1, 1), (-1, -1), (1, 0), (-1, 0)]
+    flag = True
+    for _i, _j in search_over:
+        if (i+_i in range(h)) and (j+_j in range(w)):
+            if scale_spaces[i+_i, j+_j, l2] >= scale_spaces[i, j, l1]:
+                flag = False    
+    return flag
 
-def detectBlobs(im, param=None):
-    # Input:
-    #   IM - input image
-    #
-    # Ouput:
-    #   BLOBS - n x 5 array with blob in each row in (x, y, radius, angle, score)
-    #
-    # Dummy - returns a blob at the center of the image
-    processed_im = py_im2double(rgb2gray(im))
-    initial_sigma = 1.4 #1.6
-    k = np.sqrt(2) #initial_scale
-    sigma_scale_factor = np.sqrt(1.7)
-    n_iterations = 15
-    level = 15 #10-15
-    threshold_factor = .003
-    h, w = processed_im.shape
-    scale_space = np.zeros((h, w, level))
-    scale_space, sigma = create_scale_space(processed_im,sigma_scale_factor, initial_sigma,level)
-    max_scale_space = np.copy(scale_space)
-    mask = [0] * (level)
-    index = [(1, 0), (-1, 0), (0, 1), (0, -1), 
-             (1, 1), (1, -1), (-1, 1), (-1, -1)]
-    for i in range(0, level):
-        mask[i]=int(np.ceil(np.sqrt(2)*sigma[i]))
-    size = np.shape(scale_space[:,:,0])
-
-    def check(l):
-        return all(scale_space[i + dx, j + dy, l] < scale_space[i, j, k] 
-           for dx, dy in index 
-           if  0<= i + dx < size[0] and 0<= j + dy <size[1])
-
-    blob_location =[]
-    for k in range(0,level):
-        max_scale_space[:mask[k],:mask[k],k] = 0
-        max_scale_space[-mask[k]:,-mask[k]:,k] = 0
-        for i in range(mask[k]+1,size[0]-mask[k]-1):
-            for j in range(mask[k]+1,size[1]-mask[k]-1):
-                if scale_space[i, j, k] < threshold_factor:
+def non_max_suppression_blobs(scale_spaces, scaling, sigma, level_, cutoff=0.003):
+    scale_spaces_max = scale_spaces.copy()
+    h, w = scale_spaces_max[:, :, 0].shape
+    kernel = [int(np.ceil(s)) for s in sigma]
+    blob_location = []
+    for le in range(0, level_):
+        curr = kernel[le]
+        print ("Iterating for Level={}".format(le))
+        scale_spaces_max[-curr:, -curr:, le] = 0
+        scale_spaces_max[:curr, :curr, le] = 0
+        for i in range(curr+1, (h - curr - 1)):
+            for j in range(curr+1, (w - curr - 1)):
+                if scale_spaces[i, j, le] < cutoff:
                     continue
-                c_max = check(k)
-                l_max = u_max = True
-                if k - 1 >= 0:
-                    l_max = check(k - 1) and \
-                    scale_space[i, j, k - 1] < scale_space[i, j, k]
-                if k + 1 < level:
-                    u_max = check(k + 1) and \
-                    scale_space[i, j, k + 1] < scale_space[i, j, k]
-                if c_max and l_max and u_max:
-                    max_scale_space[i, j, k] = 1
-                    blob_location.append((i, j, k, scale_space[i, j, k]))
-
+                curr_flag = max_scaled_spaces(scale_spaces, i, j, le, le)
+                lower_flag = (le > 0) and scale_spaces[i, j, le-1] < scale_spaces[i, j, le] and max_scaled_spaces(scale_spaces, i, j, le, le-1)
+                upper_flag = (le < level_-1) and scale_spaces[i, j, le+1] < scale_spaces[i, j, le]  and max_scaled_spaces(scale_spaces, i, j, le, le+1) 
+                if curr_flag and lower_flag and upper_flag: #and lower_flag
+                    blob_location.append([i, j, le, scale_spaces[i, j, le]])
+                    scale_spaces_max[i, j, le] = 1   
     blobs = np.zeros((len(blob_location), 5))
     i = 0
-    for center in blob_location:
-        x, y = center[0], center[1]
-        radius = int(np.ceil(np.sqrt(2)*sigma[center[2]])) 
-        score = center[3]
+    for item in blob_location:
+        x, y = item[0], item[1]
+        radius = sigma[item[2]]
+        score = item[3]
         blobs[i] = [y, x, radius, -1, score] #(x, y, radius, angle, score)
         i+=1
-    return np.array(blobs)
+    return blobs
+
+def detectBlobs(im, param={}):
+    #Default Params
+    default_cutoff, default_sigma, default_level, default_scaling = 0.002, 1.2, 14, np.sqrt(1.8)
+    cutoff = param.get("cutoff") if param.get("cutoff") is not None else default_cutoff
+    sigma_seed = param.get("sigma_seed") if param.get("sigma_seed") is not None else default_sigma
+    level = param.get("level") if param.get("level") is not None else default_level
+    scaling = param.get("scaling") if param.get("scaling") is not None else default_scaling
+    
+    processed_im = py_im2double(rgb2gray(im))
+    scale_space, sigma = create_scale_space(processed_im, scaling, sigma_seed, level)
+    blobs = non_max_suppression_blobs(scale_space, scaling, sigma, level, cutoff)
+    return blobs
