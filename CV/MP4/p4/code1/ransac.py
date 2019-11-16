@@ -14,7 +14,7 @@ def add_extra_dim(matching_blobs):
     return np.hstack([matching_blobs, np.ones((matching_blobs.shape[0], 1))])
 
 def ransac(matches, blobs1, blobs2, param={}):
-    default_max_itr, default_reject_limit = 200, 1000
+    default_max_itr, default_reject_limit = 900, 1
     max_iteration = param.get("max_iteration") if param.get("max_iteration") is not None else default_max_itr
     reject_limit = param.get("reject_limit") if param.get("reject_limit") is not None else default_reject_limit
     pairs = max(int(matches.shape[0] * 0.01), 2)

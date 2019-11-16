@@ -26,8 +26,8 @@ blobs1 = detectBlobs(im1)
 blobs2 = detectBlobs(im2)
 
 #Compute SIFT features
-sift1 = compute_sift(im1, blobs1[:, 0:3])
-sift2 = compute_sift(im2, blobs2[:, 0:3])
+sift1 = compute_sift(im1, blobs1)
+sift2 = compute_sift(im2, blobs2)
 
 #Find the matching between features
 matches = computeMatches(sift1, sift2)
