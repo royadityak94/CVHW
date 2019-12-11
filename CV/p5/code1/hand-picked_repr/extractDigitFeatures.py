@@ -12,7 +12,7 @@ import multiprocessing
 #   is the number of images. 
 
 def pixelFeatures(x):
-    return feature_normalization(x.reshape(-1), 'L2-Norm')
+    return feature_normalization(x.reshape(-1), 'min-max')
 
 def feature_normalization(patch, type, epsilon=1e-5):
     patch = patch.astype('longdouble')
@@ -20,6 +20,8 @@ def feature_normalization(patch, type, epsilon=1e-5):
         return np.sqrt(patch)
     elif type == 'L2-Norm':
         return patch / np.sqrt(np.sum(patch ** 2) + epsilon)
+    elif type == 'min-max':
+        return (patch - patch.min()) / (patch.max() - patch.min())
     else:
         return -1
     
@@ -32,7 +34,7 @@ def extract_relevant_window(arr, patch_size, index_i, index_j):
 
 def hogFeatures(x):
     # Applying Non Linear Mapping
-    img = np.sqrt(x)
+    img = feature_normalization (x, 'Sqrt')
 
     # Computing the channel gradient
     r_grad, c_grad = np.empty(img.shape).astype('longdouble'), np.empty(img.shape).astype('longdouble')
@@ -56,7 +58,7 @@ def hogFeatures(x):
             # Applying Histogram calculations
             hog[j][i] = np.histogram(np.ndarray.flatten(curr_patch), weights=np.ndarray.flatten(curr_weight), 
                                      bins=np.linspace(0, 180, num=(orientation_bins+1)))[0]        
-    hog_norm = feature_normalization(hog, 'L2-Norm')
+    hog_norm = feature_normalization(hog, 'min-max')
     return hog_norm.ravel()
 
 def compute_from_patch(patch):
@@ -70,27 +72,31 @@ def compute_from_patch(patch):
 
 def lbpFeatures(x):
     patch_size = 3
-    img = x
+    img = np.sqrt(x)
     final_img = np.empty((img.shape[0]-(patch_size-1), img.shape[1]-(patch_size-1))).astype('longdouble')
     for r in range(0, final_img.shape[0]):
         for c in range(0, final_img.shape[1]):
             final_img[r][c] = compute_from_patch(img[r:r+patch_size, c:c+patch_size])
-    return feature_normalization(np.histogram(np.ndarray.flatten(final_img), bins=np.linspace(1, 255, num=257))[0], 'L2-Norm')
+    return feature_normalization(np.histogram(np.ndarray.flatten(final_img), bins=np.linspace(1, 255, num=257))[0], 'min-max')
 
-def extractDigitFeatures(x, featureType):
+def extractDigitFeatures(x, featureType, dataType):
     N = x.shape[2]
+    
     if featureType == 'pixel':
         features = np.empty((784, N)).astype('longdouble')
         features = np.array(Parallel(n_jobs=multiprocessing.cpu_count()) 
                            (delayed(pixelFeatures)(x[:, :, X_idx]) for X_idx in range(N)))
     elif featureType == 'hog':
+        if dataType == 'digits-scaled.mat':
+            x = feature_normalization(x, 'L2-Norm')
         features = np.empty((392, N)).astype('longdouble')
-        features = np.array(Parallel(n_jobs=2) 
+        features = np.array(Parallel(n_jobs=multiprocessing.cpu_count()) 
                            (delayed(hogFeatures)(x[:, :, X_idx]) for X_idx in range(N)))
     elif featureType == 'lbp':
         features = np.empty((256, N)).astype('longdouble')
         features = np.array(Parallel(n_jobs=multiprocessing.cpu_count()) 
                            (delayed(lbpFeatures)(x[:, :, X_idx]) for X_idx in range(N)))
         
-    features = feature_normalization(features, 'Sqrt')
+    if featureType in ['lbp', 'pixel'] or dataType in ['digits-scaled.mat']:
+        features = feature_normalization(features, 'Sqrt')
     return features.T
