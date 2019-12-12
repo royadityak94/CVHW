@@ -53,7 +53,24 @@ clean_img = torch.FloatTensor(im).unsqueeze(0).unsqueeze(0).transpose(2,3)
 eta = torch.randn(*noisy_img.size())
 eta.detach()
 
+###
+# Your training code goes here.
+###
+training_loss, testing_loss = np.zeros((MAX_EPOCHS+1,)), np.zeros((MAX_EPOCHS+1,))
+MAX_EPOCHS = 500
+for itr in range(MAX_EPOCHS+1):
+    out = net(eta)
+    optimizer.zero_grad()
+    loss = criterion(out, noisy_img)
+    loss.backward()
+    optimizer.step()
 
+    op_img = net(eta)[0, 0, :, :].transpose(0,1).detach().numpy()
+    training_loss[itr] = ((noise - op_img)**2).sum()
+    testing_loss[itr] = ((im - op_img)**2).sum()
+    
+    if itr %100 == 0:
+        print ("Loss = %.4f, Loss2 %.4f" % (training_loss[itr], testing_loss[itr]))
 ###
 # Your training code goes here.
 ###
